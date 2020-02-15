@@ -1,0 +1,484 @@
+---
+title: "Project_651"
+author: "Yuxin Ma"
+date: "2019/12/1"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+library(psych)
+library(relaimpo)
+library(randomForest)
+library(WVPlots) 
+library(party)
+library(randomForestExplainer)
+library(dplyr)
+library(e1071)
+library(rpart)
+library(rpart.plot)
+library(ranger) 
+library(caret)
+library(Metrics)
+library(lmtest)
+library(nortest)
+```
+
+
+## EDA
+```{r}
+insurance <- read.csv("insurance.csv")
+ins <- insurance
+```
+
+summary
+```{r}
+summary(insurance)
+# We can see:?Ա??ֲ????ȣ?20%???̣??????ֲ?????
+```
+
+```{r}
+hist(insurance$age,col='blue',xlab = 'age',main = 'Histogram of age')
+boxplot(insurance$age,main = 'Boxplot of age')
+```
+
+```{r}
+hist(insurance$bmi,col='blue',xlab = 'bmi',main = 'Histogram of bmi')
+boxplot(insurance$bmi,main = 'Boxplot of bmi')
+```
+
+```{r}
+hist(insurance$charges,col='blue',xlab = 'charges',main = 'Histogram of charges')
+boxplot(insurance$charges,main = 'Boxplot of charges')
+
+# take log to make it more 'normal'
+insurance$charges_log <- log(insurance$charges)
+hist(insurance$charges_log,col='blue',xlab = 'log charges',main = 'Histogram of log charges')
+boxplot(insurance$charges_log,main = 'Boxplot of log charges')
+
+#take sqrt ???о?û??log?ã?
+charges_sqrt <- sqrt(insurance$charges)
+hist(charges_sqrt,col='blue',xlab = 'sqrt charges',main = 'Histogram of sqrt charges')
+boxplot(charges_sqrt,main = 'Boxplot of sqrt charges')
+#????ͨ??????VAR?ж?????transformation????
+```
+
+```{r}
+#hist(c,breaks=100)
+```
+
+```{r}
+#c2 <- c1-mean(c1)
+#c3 <- c2
+#c3[c3>0] <- c3[c3>0]^1.5
+#c3[c3<0] <- -(-c3[c3<0])^1.5
+#hist(c3,breaks=100)
+```
+
+```{r}
+hist(rnorm(1338,0,0.845),breaks=100)
+```
+
+
+
+describe by region (ֱ?ӿ???ɫ??result...) ??????????ûɶ?ã??????????Ƶ??Ҿ?û??...??
+```{r}
+describeBy(insurance$charges,insurance$region)
+## summarized result from internet...
+## 
+##  Descriptive statistics by group 
+## group: northeast
+##    vars   n     mean      sd   median  trimmed     mad    min      max
+## X1    1 324 13406.38 11255.8 10057.65 11444.31 7806.78 1694.8 58571.07
+##       range skew kurtosis     se
+## X1 56876.28 1.48     1.68 625.32
+## -------------------------------------------------------- 
+## group: northwest
+##    vars   n     mean       sd median  trimmed     mad     min     max
+## X1    1 325 12417.58 11072.28 8965.8 10414.54 7001.14 1621.34 60021.4
+##       range skew kurtosis     se
+## X1 58400.06 1.67     2.53 614.18
+## -------------------------------------------------------- 
+## group: southeast
+##    vars   n     mean      sd  median  trimmed     mad     min      max
+## X1    1 364 14735.41 13971.1 9294.13 12563.65 8749.51 1121.87 63770.43
+##       range skew kurtosis     se
+## X1 62648.55 1.24     0.48 732.28
+## -------------------------------------------------------- 
+## group: southwest
+##    vars   n     mean       sd  median  trimmed     mad     min      max
+## X1    1 325 12346.94 11557.18 8798.59 10120.52 6329.39 1241.57 52590.83
+##       range skew kurtosis     se
+## X1 51349.26 1.67     2.03 641.08
+```
+
+Boxplot by region
+```{r}
+ggplot(data = insurance,aes(region,charges)) + geom_boxplot(fill = c(2:5)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges per Region")
+
+ggplot(ins, aes(ins$charges)) + geom_density(aes(colour = region, fill = region), alpha = .4)
+```
+
+```{r}
+ggplot(data = insurance,aes(smoker,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Smoking Status")
+
+ggplot(ins, aes(ins$charges)) + geom_density(aes(colour = smoker, fill = smoker), alpha = .4)
+```
+
+```{r}
+ggplot(data = insurance,aes(sex,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Gender")
+
+ggplot(ins, aes(ins$charges)) + geom_density(aes(colour = sex, fill = sex), alpha = .4)
+```
+
+```{r}
+ggplot(data = insurance,aes(as.factor(children),charges)) + geom_boxplot(fill = c(2:7)) +
+  theme_classic() +  xlab("children") +
+  ggtitle("Boxplot of Medical Charges by Number of Children")
+```
+
+```{r}
+# Create new variable derived from bmi
+insurance$bmi30 <- ifelse(insurance$bmi>30,"yes","no")
+ins$bmi30 <- ifelse(ins$bmi>30,"yes","no")
+
+# By obesity status
+ggplot(data = insurance,aes(bmi30,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Obesity") + xlab('bmi>30 (indecates obisity)')
+
+ggplot(ins, aes(ins$charges)) + geom_density(aes(colour = bmi30, fill = bmi30), alpha = .4)
+```
+
+```{r}
+# ????ò?ƿ???ȥ?Ǹ?ͦ???׵ķ??ࣺ bmi>30 & ???? ??????ת??һ???ⲻ?Ƿϻ?ô...??
+ins$bmi_smoker <- ifelse((ins$bmi>30&ins$smoker=='yes'),"yes","no")
+ggplot(ins, aes(ins$charges)) + geom_density(aes(colour = bmi_smoker, fill = bmi_smoker), alpha = .4)
+```
+
+
+```{r}
+pairs.panels(insurance[c("age","bmi", "children",'smoker', "charges")])
+# ????̫??ͨ??????
+```
+```{r}
+pairplot(ins, 
+         c('age','bmi','children','charges'), 
+         "Insurance Price -- Smoker vs. Non-smoker", 
+         group_var = "smoker")
+```
+
+
+```{r}
+# ??????????????ûɶ???塣????
+pairs(insurance[c("age","bmi", "children","charges")],bg = c("#1b9e77", "#d95f02", "#7570b3")[unclass(insurance$smoker)])
+```
+
+## charges-smoker relation and residuals (it's a box plot in this case)
+```{r}
+ins <- insurance
+ins.fit1 <- lm(ins$charges~ins$smoker)
+anova(ins.fit1)
+summary(ins.fit1)
+ins.re <- residuals(ins.fit1)
+plot(ins$smoker,ins.re)
+```
+
+```{r}
+require(caTools)
+rf <- randomForest(
+  x=ins[1:6],
+  y=ins$charges,
+  data=ins
+)
+plot(rf)
+```
+
+
+```{r}
+# do it later...
+forest <- randomForest::randomForest(x=ins[1:6],y=ins$charges,data = ins, localImp = TRUE, ntree = 100)
+frame <- measure_importance(forest, measures = c("mean_min_depth", "times_a_root"))
+plot_importance_ggpairs(frame, measures = c("mean_min_depth", "times_a_root"))
+```
+
+```{r}
+# qing hu lue zhe zhang tu
+x <- ctree(charges ~ ., data=ins[1:7],controls=cforest_control(mtry = 10))
+plot(x, type="simple")
+```
+```{r}
+binary.model <- rpart(charges ~ ., data = ins[1:7], cp = .01)
+rpart.plot(binary.model)
+```
+## ????????һ??...
+```{r}
+#ins$null <- 0
+#ins$bmi_smoker <- ifelse((ins$bmi>30&ins$smoker=='yes'),"yes","no")
+#fit2 <- lm(log(c)~ins$null)
+#anova(fit2)
+#summary(fit2)
+#plot(fit2)
+```
+
+```{r}
+ins$bmi_smoker <- ifelse((ins$bmi>30&ins$smoker=='yes'),"yes","no")
+fit3 <- lm(ins$charges~ins$bmi_smoker+ins$age+ins$smoker+ins$bmi)
+anova(fit3)
+summary(fit3)
+plot(fit3)
+```
+
+
+```{r}
+fit4 <- lm(ins$charges_log~ins$bmi_smoker+ins$age+ins$smoker+ins$bmi)
+anova(fit4)
+summary(fit4)
+plot(fit4)
+```
+
+```{r}
+re <- residuals(fit3)
+ind <- rank(re)
+```
+
+```{r}
+ins_tail <- ins[ind>1138,]
+```
+
+```{r}
+hist(ins_tail$charges,col='blue',xlab = 'bmi',main = 'Histogram of charges')
+boxplot(ins_tail$charges)
+```
+
+
+```{r}
+summary(ins_tail)
+hist(ins_tail$age,col='blue',xlab = 'age',main = 'Histogram of age')
+boxplot(ins_tail$age,main = 'Boxplot of age')
+hist(ins_tail$bmi,col='blue',xlab = 'bmi',main = 'Histogram of bmi')
+boxplot(ins_tail$bmi,main = 'Boxplot of bmi')
+```
+
+```{r}
+hist(ins_tail$charges,col='blue',xlab = 'charges',main = 'Histogram of charges')
+boxplot(ins_tail$charges,main = 'Boxplot of charges')
+
+# take log to make it more 'normal'
+ins_tail$charges_log <- log(ins_tail$charges)
+hist(ins_tail$charges_log,col='blue',xlab = 'log charges',main = 'Histogram of log charges')
+boxplot(ins_tail$charges_log,main = 'Boxplot of log charges')
+```
+
+
+```{r}
+ggplot(data = ins_tail,aes(region,charges)) + geom_boxplot(fill = c(2:5)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges per Region")
+
+ggplot(ins_tail, aes(ins_tail$charges)) + geom_density(aes(colour = region, fill = region), alpha = .4)
+```
+
+
+```{r}
+ggplot(data = ins_tail,aes(smoker,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Smoking Status")
+
+ggplot(ins_tail, aes(ins_tail$charges)) + geom_density(aes(colour = smoker, fill = smoker), alpha = .4)
+```
+
+```{r}
+ggplot(data = ins_tail,aes(sex,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Gender")
+
+ggplot(ins_tail, aes(ins_tail$charges)) + geom_density(aes(colour = sex, fill = sex), alpha = .4)
+```
+
+```{r}
+ggplot(data = ins_tail,aes(as.factor(children),charges)) + geom_boxplot(fill = c(2:7)) +
+  theme_classic() +  xlab("children") +
+  ggtitle("Boxplot of Medical Charges by Number of Children")
+```
+
+```{r}
+# Create new variable derived from bmi
+ins_tail$bmi30 <- ifelse(ins_tail$bmi>30,"yes","no")
+ins_tail$bmi30 <- ifelse(ins_tail$bmi>30,"yes","no")
+
+# By obesity status
+ggplot(data = ins_tail,aes(bmi30,charges)) + geom_boxplot(fill = c(2:3)) +
+  theme_classic() + ggtitle("Boxplot of Medical Charges by Obesity") + xlab('bmi>30 (indecates obisity)')
+
+ggplot(ins_tail, aes(ins_tail$charges)) + geom_density(aes(colour = bmi30, fill = bmi30), alpha = .4)
+```
+
+```{r}
+# ????ò?ƿ???ȥ?Ǹ?ͦ???׵ķ??ࣺ bmi>30 & ???? ??????ת??һ???ⲻ?Ƿϻ?ô...??
+ins_tail$bmi_smoker <- ifelse((ins_tail$bmi>30&ins_tail$smoker=='yes'),"yes","no")
+ggplot(ins_tail, aes(ins_tail$charges)) + geom_density(aes(colour = bmi_smoker, fill = bmi_smoker), alpha = .4)
+```
+
+
+##Yujie Gao (Hypothesis Testing)
+We set the confidence level as 95% for all of the tests.
+###Test1: Partial F-test
+
+```{r}
+ins.num <- ins[,c(-7,-9)]
+ins.num <- ins.num[,c('charges_log','age','bmi','smoker','bmi_smoker','sex','children','region')]
+colnames(ins.num) <- c("Y","x1","x2","x3","x4","x5","x6","x7")
+fit.full <- lm(Y ~ x1+x2+x3+x4+x5+x6+x7, data = ins.num)
+anova(fit.full)
+```
+$H_0:x5=x6=x7=0,vs.H_1:$ at least one of $x5,x6,x7$ is not equal to 0.
+
+Decision Rule: $F^*=\frac{MSR(x5,x6,x7|x1,x2,x3,x4)}{MSE(x1,x2,x3,\cdots,x7)}$, if$F^*>F_{(p-q,n-p)}(1-\alpha)=F_{(3,1320)}(0.95)=2.611644$, then reject $H_0$, otherwise fail to reject $H_0$.
+
+Conclusion: $F^*=0.0453054$, which is smaller than 2.611644, so we fail to reject $H_0$, therefore, discard x5,x6 and x7 from our model is resonable.
+
+###Test2:Residuals' constant variance
+```{r}
+bptest(charges_log ~ bmi_smoker+age+smoker+bmi, data = ins)
+```
+As we can see, the p-value of the Breusch-Pagan test is very small, so we reject the null hypothesis, which means that the residuals do not have constant variance.
+
+###Test3:Residuals' normality
+```{r}
+lillie.test(fit4$residuals)
+```
+As we can see, the p-value of the Lilliefors test is very small, so we reject the null hypothesis, which means that the residuals do not have normally distribution.
+
+# Random Forest
+## Prep
+```{r}
+# Check NA/Inf
+apply(insurance, 2, function(x) any(is.na(x)))
+apply(insurance, 2, function(x) any(is.infinite(x)))
+
+# Categorical variables
+insurance$sex <- as.factor(insurance$sex)
+insurance$smoker <- as.factor(insurance$smoker)
+insurance$region <- as.factor(insurance$region)
+```
+
+## Train & Test
+```{r}
+set.seed(123)
+split <- sample.split(insurance$charges,SplitRatio = 0.8)
+train <- subset(insurance,split = TRUE)
+test <- subset(insurance,split = FALSE)
+```
+
+## Prediction
+```{r}
+library(scorer)
+library(randomForest)
+predict_rf = randomForest(x = train[,1:6], y = train$charges,
+                          ntree = 100, importance = T)
+
+pred <- predict(predict_rf, newdata = test[,1:6])
+(rf_r2 <- r2_score(test$charges, pred))
+```
+
+The $R^2$ of Random Forest is kind of ideal.
+
+## Variable Importance
+```{r}
+library(ggplot2)
+varimp <- data.frame(predict_rf$importance)
+ggplot(varimp, aes(x=reorder(rownames(varimp),IncNodePurity), y=IncNodePurity)) +
+  geom_bar(stat="identity", fill="darkblue", colour="black") +
+  coord_flip() + theme_bw(base_size = 8) +
+  labs(title="Prediction using RandomForest with 100 trees", subtitle="Variable importance (IncNodePurity)", x="Variable", y="Variable importance (IncNodePurity)")
+```
+
+We can see that Smoker is the most important variable to predict the charges, which is very out-performance than other variables. BMI and Age are also very important.
+
+## Plot Pred vs True (by Age & Charges)
+```{r}
+ggplot(test)+
+  geom_point(aes(x=age , y = charges,color ="red"))+
+  geom_line(aes(x=age , y  = pred,color ="blue"))
+```
+
+We can see that for most points, the predicted values and the true values are very close, which means that Random Forest works kind of well for this dataset.
+
+# Unsupervised - KMeans Clustering
+## Prep
+```{r}
+# Numeric variables
+insurance$sex_num <- as.numeric(insurance$sex)
+insurance$smoker_num <- as.numeric(insurance$smoker)
+insurance$region_num <- as.numeric(insurance$region)
+```
+
+## Elbow plot to select K
+```{r}
+library(factoextra)
+fviz_nbclust(insurance[,c(1,3,4,7,8,9,10)], kmeans, method = "wss")
+```
+
+By the elbow plot, we can select K = 3 as the best K.
+
+## KMeans
+```{r}
+ins_km <- kmeans(insurance[,c(1,3,4,7,8,9,10)], centers = 3, nstart = 25)
+ins_km
+```
+
+```{r}
+#fviz_cluster(ins_km, data = insurance[,c(1,3,4,7,8,9,10)], repel = FALSE,
+#             geom = "point",
+#             show.clust.cent = TRUE,
+#             alpha = 0)
+```
+
+## Plot clustering (by Age & Charges)
+```{r}
+insurance$cluster <- as.factor(ins_km$cluster)
+ggplot(insurance)+
+  geom_point(aes(x = age , y = charges, color = cluster))
+```
+
+We can see that the clustering results is kind of ideal since they have a clear dividing among three clusters with respect to the variable Charges.
+
+## Continue variables mean values
+```{r}
+aggregate(insurance[,c(1,3,4,7)], list(insurance$cluster), mean)
+```
+
+We can see that for every group there exists clear differences in age and bmi. Group 2 has the largest mean charges with the highest bmi and highest children numbers. Group 3 has the lowest mean charges with the lowest age.
+
+## Categorical variables proportion
+### Sex
+```{r}
+prop.table(table(insurance[insurance$cluster == 1,][2]))
+prop.table(table(insurance[insurance$cluster == 2,][2]))
+prop.table(table(insurance[insurance$cluster == 3,][2]))
+```
+
+For sex, we can see that Group 2, which has the highest charges, has the obviously highest percentage of male.
+
+### Smoker
+```{r}
+prop.table(table(insurance[insurance$cluster == 1,][5]))
+prop.table(table(insurance[insurance$cluster == 2,][5]))
+prop.table(table(insurance[insurance$cluster == 3,][5]))
+```
+
+For smoker, there exists very clearly differences. We can see that Group 2, which has the highest charges, has the obviously highest percentage of smokers. For Group 3, which has the lowest charges, there is none smoker.
+
+### Region
+```{r}
+prop.table(table(insurance[insurance$cluster == 1,][6]))
+prop.table(table(insurance[insurance$cluster == 2,][6]))
+prop.table(table(insurance[insurance$cluster == 3,][6]))
+```
+
+For region, the difference is not that so obvious. For Group 2, which has the highest charges, has the obviously highest percentage in southeast but also obviously lowest percentage in northwest. 
